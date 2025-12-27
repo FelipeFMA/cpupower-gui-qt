@@ -3,6 +3,7 @@
 
 """
 Copyright (C) 2017-2020 [RnD]²
+Copyright (C) 2025 Felipe Figueiredo <felipefmavelar@gmail.com> (Qt port)
 
 This file is part of cpupower-gui.
 
@@ -19,7 +20,8 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with cpupower-gui.  If not, see <http://www.gnu.org/licenses/>.
 
-Author: Evangelos Rigas <erigas@rnd2.org>
+Original Author: Evangelos Rigas <erigas@rnd2.org>
+Qt Port: Felipe Figueiredo <felipefmavelar@gmail.com>
 """
 
 import gettext

@@ -10,6 +10,7 @@ install_data(
 # Desktop configuration
 desktop_conf = configuration_data()
 desktop_conf.set('icon', application_id)
+desktop_conf.set('bindir', get_option('prefix') / get_option('bindir'))
 
 desktop_file = i18n.merge_file(
    input: configure_file(

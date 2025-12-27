@@ -1,5 +1,3 @@
-gnome = import('gnome')
-
 python = import('python')
 
 conf = configuration_data()
@@ -23,22 +21,6 @@ configure_file(
   install: true,
   install_dir: helperdir
 )
-
-
-window = configure_file(
-  input: 'window.ui.in',
-  output: 'window.ui',
-  configuration: conf,
-)
-
-gnome.compile_resources('cpupower-gui',
-  'cpupower_gui.gresource.xml',
-  gresource_bundle: true,
-  install: true,
-  install_dir: pkgdatadir,
-  dependencies: window
-)
-
 
 cpupower_gui_sources = [
   '__init__.py',

@@ -1,3 +1,21 @@
+# config.py
+#
+# Copyright 2019-2020 Evangelos Rigas
+# Copyright 2025 Felipe Figueiredo <felipefmavelar@gmail.com> (Qt port)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 """Class for reading configuration files"""
 
 from configparser import ConfigParser
@@ -44,6 +62,16 @@ class CpuPowerConfig:
         self._read_configuration()
         self._read_profiles()
 
+    def _get_user_conf_dir(self):
+        """Get user config directory with fallback"""
+        if self.user_conf:
+            return self.user_conf
+        # Fallback if xdg module not available
+        fallback = Path.home() / ".config" / "cpupower_gui"
+        if fallback.exists():
+            return fallback
+        return None
+
     def _read_configuration(self):
         """Read and parse configuration files from
         /etc/cpupower_gui.d/ and XDG_CONFIG_HOME
@@ -59,8 +87,9 @@ class CpuPowerConfig:
                 self.config.read(confd_files)
 
         # user configuration
-        if self.user_conf:
-            conf_files = sorted(self.user_conf.glob("*.conf"))
+        user_conf_dir = self._get_user_conf_dir()
+        if user_conf_dir:
+            conf_files = sorted(user_conf_dir.glob("*.conf"))
             if conf_files:
                 self.config.read(conf_files)
 
@@ -74,8 +103,9 @@ class CpuPowerConfig:
                 self._profiles.update({prof.name: prof})
 
         # user configuration
-        if self.user_conf:
-            profile_files = sorted(self.user_conf.glob("*.profile"))
+        user_conf_dir = self._get_user_conf_dir()
+        if user_conf_dir:
+            profile_files = sorted(user_conf_dir.glob("*.profile"))
             for file in profile_files:
                 prof = Profile(file)
                 self._profiles.update({prof.name: prof})
@@ -185,12 +215,20 @@ class CpuPowerConfig:
         self.config[section][option] = str(value)
 
     def write_settings(self):
-        if self.user_conf:
-            conf_file = self.user_conf / "00-cpg.conf"
+        conf_dir = self.user_conf
+        if not conf_dir:
+            # Fallback if xdg module not available
+            conf_dir = Path.home() / ".config" / "cpupower_gui"
+        
+        try:
+            # Ensure directory exists
+            conf_dir.mkdir(parents=True, exist_ok=True)
+            conf_file = conf_dir / "00-cpg.conf"
             with conf_file.open("w") as f:
                 self.config.write(f)
             return True
-        else:
+        except (OSError, IOError) as e:
+            print(f"Error writing settings: {e}")
             return False
 
     def _generate_default_profiles(self):

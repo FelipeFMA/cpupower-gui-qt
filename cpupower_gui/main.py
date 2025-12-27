@@ -1,6 +1,7 @@
 # main.py
 #
 # Copyright 2019-2020 Evangelos Rigas
+# Copyright 2025 Felipe Figueiredo <felipefmavelar@gmail.com> (Qt port)
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,27 +16,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import os
 import sys
 
 import dbus
-import gi
-
-# Gtk.Template requires at least version 3.30
-gi.check_version("3.30")
-
-gi.require_version("Gtk", "3.0")
-
-from gi.repository import Gio, GLib, Gtk
-
-try:
-    gi.require_version("AyatanaAppIndicator3", "0.1")
-    from gi.repository import AyatanaAppIndicator3 as AppIndicator
-except (ValueError, ImportError):
-    AppIndicator = None
+from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+from PyQt6.QtGui import QIcon, QAction
+from PyQt6.QtNetwork import QLocalServer, QLocalSocket
+from PyQt6.QtCore import QByteArray
 
 from .helper import apply_balanced, apply_performance, apply_cpu_profile
-from .window import CpupowerGuiWindow
 from .config import CpuPowerConfig
 
 BUS = dbus.SystemBus()
@@ -47,118 +36,166 @@ HELPER = dbus.Interface(SESSION, "org.rnd2.cpupower_gui.helper")
 APP_ID = "org.rnd2.cpupower_gui"
 
 
-class Application(Gtk.Application):
-    def __init__(self):
-        super().__init__(application_id=APP_ID)
+class CpuPowerApp(QApplication):
+    """Main Qt Application for cpupower-gui"""
 
-        action = Gio.SimpleAction.new("Performance", None)
-        action.connect("activate", self.on_apply_performance)
-        self.add_action(action)
+    SOCKET_NAME = "cpupower-gui-single-instance"
 
-        action = Gio.SimpleAction.new("Balanced", None)
-        action.connect("activate", self.on_apply_default)
-        self.add_action(action)
+    def __init__(self, argv):
+        super().__init__(argv)
+        self.setApplicationName("cpupower-gui")
+        self.setDesktopFileName(APP_ID)
+        self.setQuitOnLastWindowClosed(False)
 
-        if AppIndicator:
-            self.indicator = AppIndicator.Indicator.new(
-                APP_ID, APP_ID, AppIndicator.IndicatorCategory.APPLICATION_STATUS
-            )
-            self.indicator.set_status(AppIndicator.IndicatorStatus.ACTIVE)
-            self.indicator.set_menu(self.create_menu())
+        self.main_window = None
+        self.tray_icon = None
+        self._server = None
 
-    def create_menu(self):
-        menu = Gtk.Menu()
+        self._setup_tray()
+        self._setup_single_instance()
+
+    def _setup_single_instance(self):
+        """Setup single-instance server to listen for new instance requests"""
+        self._server = QLocalServer(self)
+        self._server.newConnection.connect(self._on_new_connection)
+
+        # Try to start listening - if it fails, cleanup stale socket and retry
+        if not self._server.listen(self.SOCKET_NAME):
+            # Remove potentially stale socket file and try again
+            QLocalServer.removeServer(self.SOCKET_NAME)
+            self._server.listen(self.SOCKET_NAME)
+
+    def _on_new_connection(self):
+        """Handle connection from another instance - show our window"""
+        socket = self._server.nextPendingConnection()
+        if socket:
+            socket.waitForReadyRead(1000)
+            socket.disconnectFromServer()
+            # Another instance requested us to show
+            self.show_main_window()
+
+    def _setup_tray(self):
+        """Setup system tray icon and menu"""
+        self.tray_icon = QSystemTrayIcon(self)
+        self.tray_icon.setIcon(QIcon.fromTheme(APP_ID, QIcon.fromTheme("cpu")))
+        self.tray_icon.setToolTip("CPU Power GUI")
+
+        # Create tray menu
+        tray_menu = QMenu()
+
+        # Show GUI action
+        show_action = QAction("Show GUI", self)
+        show_action.triggered.connect(self.show_main_window)
+        tray_menu.addAction(show_action)
+
+        tray_menu.addSeparator()
+
+        # Load profiles into tray menu
+        self._add_profile_actions(tray_menu)
+
+        tray_menu.addSeparator()
+
+        # Quit action
+        quit_action = QAction("Quit", self)
+        quit_action.triggered.connect(self.quit)
+        tray_menu.addAction(quit_action)
+
+        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.activated.connect(self._on_tray_activated)
+        self.tray_icon.show()
+
+    def _add_profile_actions(self, menu):
+        """Add profile actions to the tray menu"""
         config = CpuPowerConfig()
         profiles = [config.get_profile(profile) for profile in config.profiles]
-
-        showapp = Gtk.MenuItem("Show GUI")
-        showapp.connect("activate", self.do_activate)
-        menu.append(showapp)
-
-        separator = Gtk.SeparatorMenuItem()
-        menu.append(separator)
 
         # Built-in profiles
         for profile in profiles:
             if profile._custom:
                 continue
-            item = Gtk.MenuItem(profile.name)
-            item.connect("activate", self.on_apply_profile, profile)
-            menu.append(item)
+            action = QAction(profile.name, self)
+            action.triggered.connect(lambda checked, p=profile: self.on_apply_profile(p))
+            menu.addAction(action)
 
-        separator = Gtk.SeparatorMenuItem()
-        menu.append(separator)
+        menu.addSeparator()
 
         # System profiles
         for profile in profiles:
             if profile.system:
-                item = Gtk.MenuItem(profile.name)
-                item.connect("activate", self.on_apply_profile, profile)
-                menu.append(item)
+                action = QAction(profile.name, self)
+                action.triggered.connect(lambda checked, p=profile: self.on_apply_profile(p))
+                menu.addAction(action)
 
-        separator = Gtk.SeparatorMenuItem()
-        menu.append(separator)
+        menu.addSeparator()
 
         # User profiles
         for profile in profiles:
             if profile._custom and not profile.system:
-                item = Gtk.MenuItem(profile.name)
-                item.connect("activate", self.on_apply_profile, profile)
-                menu.append(item)
+                action = QAction(profile.name, self)
+                action.triggered.connect(lambda checked, p=profile: self.on_apply_profile(p))
+                menu.addAction(action)
 
-        separator = Gtk.SeparatorMenuItem()
-        menu.append(separator)
+    def _on_tray_activated(self, reason):
+        """Handle tray icon activation"""
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            self.show_main_window()
 
-        exittray = Gtk.MenuItem("Quit")
-        exittray.connect("activate", self.do_quit)
-        menu.append(exittray)
+    def show_main_window(self):
+        """Show or create the main window"""
+        if self.main_window is None:
+            from .window import CpupowerGuiWindow
+            self.main_window = CpupowerGuiWindow()
 
-        menu.show_all()
-        return menu
+        self.main_window.show()
+        self.main_window.raise_()
+        self.main_window.activateWindow()
 
-    def do_activate(self, *args):
-        win = self.props.active_window
-        if not win:
-            win = CpupowerGuiWindow(application=self)
-        win.present()
-
-    def do_quit(self, *args):
-        exit(0)
-
-    def on_apply_profile(self, params=None, profile=None):
+    def on_apply_profile(self, profile):
+        """Apply a CPU profile"""
         apply_cpu_profile(profile)
 
         # Update window if exists
-        win = self.props.active_window
-        if win:
-            for cpu in win.settings.keys():
-                win._refresh_cpu_settings(cpu)
+        if self.main_window:
+            for cpu in self.main_window.settings.keys():
+                self.main_window._refresh_cpu_settings(cpu)
 
         return 0
 
-    def on_apply_performance(self, params=None, platform_data={}):
+    def on_apply_performance(self):
+        """Apply performance profile"""
         apply_performance()
 
-        # Update window if exists
-        win = self.props.active_window
-        if win:
-            for cpu in win.settings.keys():
-                win._refresh_cpu_settings(cpu)
+        if self.main_window:
+            for cpu in self.main_window.settings.keys():
+                self.main_window._refresh_cpu_settings(cpu)
 
         return 0
 
-    def on_apply_default(self, params=None, platform_data={}):
+    def on_apply_balanced(self):
+        """Apply balanced profile"""
         apply_balanced()
 
-        # Update window if exists
-        win = self.props.active_window
-        if win:
-            for cpu in win.settings.keys():
-                win._refresh_cpu_settings(cpu)
+        if self.main_window:
+            for cpu in self.main_window.settings.keys():
+                self.main_window._refresh_cpu_settings(cpu)
 
         return 0
 
 
 def main(version):
-    app = Application()
-    return app.run(sys.argv)
+    """Main entry point for the Qt application"""
+    # Check if another instance is already running
+    socket = QLocalSocket()
+    socket.connectToServer(CpuPowerApp.SOCKET_NAME)
+
+    if socket.waitForConnected(500):
+        # Another instance is running - send activation request and exit
+        socket.write(QByteArray(b"show"))
+        socket.waitForBytesWritten(1000)
+        socket.disconnectFromServer()
+        return 0
+
+    app = CpuPowerApp(sys.argv)
+    app.show_main_window()
+    return app.exec()
+

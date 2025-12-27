@@ -3,6 +3,7 @@
 # cpupower-gui.in
 #
 # Copyright 2019-2020 Evangelos Rigas
+# Copyright 2025 Felipe Figueiredo <felipefmavelar@gmail.com> (Qt port)
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -357,12 +358,6 @@ if __name__ == "__main__":
     if args.performance:
         apply_performance()
         sys.exit(0)
-
-    import gi
-    from gi.repository import Gio
-
-    resource = Gio.Resource.load(os.path.join(pkgdatadir, "cpupower-gui.gresource"))
-    resource._register()
 
     from cpupower_gui import main
 

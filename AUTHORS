@@ -1,3 +1,4 @@
+# Original cpupower-gui authors:
 Evangelos Rigas
 vagnum08
 Heimen Stoffels
@@ -6,3 +7,6 @@ Anirudh Acharya
 Hendrik
 blackPanther OS
 yjwork-cn
+
+# Qt port:
+Felipe Figueiredo <felipefmavelar@gmail.com> (Qt port)
