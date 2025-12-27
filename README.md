@@ -2,7 +2,7 @@
 
 A Qt-based fork of [cpupower-gui](https://github.com/vagnum08/cpupower-gui), the original GTK application for managing CPU frequency scaling.
 
-![Screenshot](screenshot.png)
+<img width="984" height="1063" alt="screenshot" src="https://github.com/user-attachments/assets/742e15a6-7d7c-4fdf-ad35-56e6ac4abdf4" />
 
 ## About
 
